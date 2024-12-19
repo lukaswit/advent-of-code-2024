@@ -7,6 +7,7 @@
 #include <ctype.h>
 #include <algorithm>
 #include <map>
+#include <iterator>
 
 //************************************************************************** */
 // Function declarations
@@ -15,13 +16,15 @@ std::vector<std::string> customSplit(std::string str, std::string sep);
 std::vector<std::string> readInput(std::string fileName);
 int solvePuzzle(std::vector<std::string>);
 int walkGuard(int**, int*, int*, int*, int*, int, int);
+bool stateHasOccured(std::vector<std::vector<int>>*, std::vector<int>, int);
+void printMap(int**, int, int);
 
 //************************************************************************** */
 // Main
 //************************************************************************** */
 int main() {
     // debug flag
-    bool debug = true;
+    bool debug = false;
 
     // Read the puzzle input
     std::string fileName {"puzzle_input.txt"};
@@ -55,6 +58,9 @@ int solvePuzzle(std::vector<std::string> puzzleInput) {
     int posY = 0;
     int dirX = 0;
     int dirY = -1;
+    int initPosX = 0;
+    int initPosY = 0;
+    
 
     // Get the size of the puzzle input
     nRows = puzzleInput.size();
@@ -62,11 +68,17 @@ int solvePuzzle(std::vector<std::string> puzzleInput) {
 
     // Init map and populate it
     int** map = new int*[nRows];
-    int*  mapMem = new int[nRows * nCols];
+    int*  __map = new int[nRows * nCols];
     for (int ii=0; ii<nRows; ii++) {
-        map[ii] = mapMem + nCols*ii;
+        map[ii] = __map + nCols*ii;
     }
-    
+
+    int** mapCopy = new int*[nRows];
+    int*  __mapCopy = new int[nRows * nCols];
+    for (int ii=0; ii<nRows; ii++) {
+        mapCopy[ii] = __mapCopy + nCols*ii;
+    }
+
     for (int ii=0; ii<nRows; ii++) {
         for (int jj=0; jj<nCols; jj++) {
             // Find the obstacles
@@ -74,35 +86,62 @@ int solvePuzzle(std::vector<std::string> puzzleInput) {
             else {map[ii][jj] = 0;}
             // Find the initial position
             if (puzzleInput[ii].substr(jj, 1) == "^") {
-                posX = jj;
-                posY = ii;
+                initPosX = jj;
+                initPosY = ii;
                 map[ii][jj] = -1;
             }   
         }
     }
 
-    std::cout << "Initial position it: (" << posX << "," << posY << ")\n";
-    int onMap = 1;
-    while (true) {
-        // Let the guard walk
-        std::cout << "The current direction is: (" << dirX << "," << dirY << ")\n";
-        std::cout << "The current position is: (" << posX << "," << posY << ")\n";
-        onMap = walkGuard(map, &posX, &posY, &dirX, &dirY, nRows, nCols);
-        if (!onMap) {break;}
-    }
+    int obstaclePositions = 0;
+    for (int iiOuter=0; iiOuter < nRows; iiOuter++) {
+        for (int jjOuter=0; jjOuter < nCols; jjOuter++) {
 
-    int counter = 0;
-    // Count the number of visited positions
-    for (int ii=0; ii<nRows; ii++) {
-        for (int jj=0; jj<nCols; jj++) {
-            if (map[ii][jj] == -1) {counter++;}
+            // make a copy of the initial map and add an obstacle
+            std::copy(__map, __map + (nRows * nCols), __mapCopy);
+            std::vector<std::vector<int>> guardStates = {};
+
+            // Init position and direction
+            dirX = 0;
+            dirY = -1;
+            posX = initPosX;
+            posY = initPosY;
+
+            // modify the map
+            if (mapCopy[iiOuter][jjOuter] == 0) {
+                mapCopy[iiOuter][jjOuter] = 1;
+            } else {
+                continue;
+            }
+
+            int onMap = 1;
+            while (true) {
+                std::vector<int> guardState = {posX, posY, dirX, dirY};
+                // Check if current state in is already in vector of states
+                
+                if (stateHasOccured(&guardStates, guardState, guardStates.size())) {
+                    obstaclePositions++;
+                    std::cout << iiOuter << " " << jjOuter << "\n";
+                    break;
+                } else {
+                    guardStates.push_back(guardState);
+                }
+
+                // Let the guard walk
+                onMap = walkGuard(mapCopy, &posX, &posY, &dirX, &dirY, nRows, nCols);
+                if (!onMap) {
+                    break;
+                }
+            }
         }
     }
-    
-    delete[] mapMem;
-    delete map;
 
-    return counter;
+    delete[] map;
+    delete[] __map;
+    delete[] mapCopy;
+    delete[] __mapCopy;
+    
+    return obstaclePositions;
 }
 
 int walkGuard(int** map, int* posX, int* posY, int* dirX, int* dirY, int nRows, int nCols) {
@@ -110,8 +149,8 @@ int walkGuard(int** map, int* posX, int* posY, int* dirX, int* dirY, int nRows, 
     int nSteps = 1;
     int ii;
     int jj;
-    int lastX;
-    int lastY;
+    int lastX = *posX;
+    int lastY = *posY;
     int onMap = 1;
     
     while (true) {
@@ -131,7 +170,7 @@ int walkGuard(int** map, int* posX, int* posY, int* dirX, int* dirY, int nRows, 
         
         // Check if the next position is an obstacle
         if (map[ii][jj] == 1) {
-            std::cout << "Obstacle found!\n";
+            //std::cout << "Obstacle found!\n";
             // change direction
             if (*dirY == -1) {
                 *dirY = 0;
@@ -148,19 +187,43 @@ int walkGuard(int** map, int* posX, int* posY, int* dirX, int* dirY, int nRows, 
             }
             onMap = 1;
             break;
+        } else {
+            // Mark next position as visited
+            map[ii][jj] = -1;
+            lastX = jj;
+            lastY = ii;
+            nSteps++;
         }
-
-        // Mark next position as visited
-        map[ii][jj] = -1;
-        lastX = jj;
-        lastY = ii;
-        nSteps++;
     }
     *posY = lastY;
     *posX = lastX;
     return onMap;
 }
 
+bool stateHasOccured(std::vector<std::vector<int>>* states, std::vector<int> state, int nStates) {
+    bool matchFound = false;
+
+    for (auto ss: *states) {
+        if (ss == state) {
+            matchFound = true;
+            break;
+        }
+    }
+    return matchFound;
+}
+
+void printMap(int** map, int nRows, int nCols) {
+    for (int ii=0; ii<nRows; ii++) {
+        for (int jj=0; jj<nRows; jj++) {
+            if (ii==3 and jj==62) {std::cout << "O";}
+            else if (map[ii][jj]==0) {std::cout << ".";}
+            else if (map[ii][jj]==1) {std::cout << "#";}
+            else if (map[ii][jj]==-1) {std::cout << "+";}
+        }
+        std::cout << "\n";
+    }
+    std::cout << "\n\n\n\n";
+}
 /* ========================================================================= */
 //
 // HELPER FUNCTIONS
